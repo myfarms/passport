@@ -69,4 +69,9 @@ class Client extends Model
     {
         return $this->personal_access_client || $this->password_client;
     }
+
+    public function getIdAttribute()
+    {
+        return $this->attributes['id'];
+    }
 }
