@@ -44,6 +44,10 @@ class PassportServiceProvider extends ServiceProvider
                 Console\KeysCommand::class,
             ]);
         }
+
+        Client::creating(function ($client) {
+            $client->id = str_random(20);
+        });
     }
 
     /**
