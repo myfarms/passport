@@ -2,7 +2,6 @@
 
 namespace Laravel\Passport;
 
-use Str;
 use DateInterval;
 use Illuminate\Auth\RequestGuard;
 use Illuminate\Support\Facades\Auth;
@@ -47,7 +46,7 @@ class PassportServiceProvider extends ServiceProvider
         }
 
         Client::creating(function ($client) {
-            $client->id = Str::random(20);
+            $client->id = str_random(20);
         });
     }
 
