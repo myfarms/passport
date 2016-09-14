@@ -40,6 +40,11 @@ class Client extends Model
         'revoked' => 'bool',
     ];
 
+    /*
+     * We are not using an autoincrementing PK anymore.
+     */
+    public $incrementing = false;
+
     /**
      * Get all of the authentication codes for the client.
      *
@@ -68,10 +73,5 @@ class Client extends Model
     public function firstParty()
     {
         return $this->personal_access_client || $this->password_client;
-    }
-
-    public function getIdAttribute()
-    {
-        return $this->attributes['id'];
     }
 }
