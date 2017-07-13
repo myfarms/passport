@@ -40,6 +40,12 @@ class Client extends Model
         'revoked' => 'bool',
     ];
 
+    /*
+     * We are not using an autoincrementing PK anymore.
+     */
+    public $incrementing = false;
+
+
     /**
      * Get all of the authentication codes for the client.
      *
