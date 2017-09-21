@@ -2,12 +2,17 @@
 
 namespace Laravel\Passport\Http\Controllers;
 
-use Laravel\Passport\Passport;
 use Illuminate\Http\Request;
+use Laravel\Passport\Passport;
+use Laravel\Passport\Bridge\User;
+use Laravel\Passport\TokenRepository;
 use Laravel\Passport\ClientRepository;
+use Illuminate\Database\Eloquent\Model;
 use Psr\Http\Message\ServerRequestInterface;
+use Zend\Diactoros\Response as Psr7Response;
 use League\OAuth2\Server\AuthorizationServer;
 use Illuminate\Contracts\Routing\ResponseFactory;
+use League\OAuth2\Server\RequestTypes\AuthorizationRequest;
 
 class AuthorizationController
 {
@@ -16,22 +21,22 @@ class AuthorizationController
     /**
      * The authorization server.
      *
-     * @var AuthorizationServer
+     * @var \League\OAuth2\Server\AuthorizationServer
      */
     protected $server;
 
     /**
      * The response factory implementation.
      *
-     * @var ResponseFactory
+     * @var \Illuminate\Contracts\Routing\ResponseFactory
      */
     protected $response;
 
     /**
      * Create a new controller instance.
      *
-     * @param  AuthorizationServer  $server
-     * @param  ResponseFactory  $response
+     * @param  \League\OAuth2\Server\AuthorizationServer  $server
+     * @param  \Illuminate\Contracts\Routing\ResponseFactory  $response
      * @return void
      */
     public function __construct(AuthorizationServer $server, ResponseFactory $response)
@@ -43,25 +48,36 @@ class AuthorizationController
     /**
      * Authorize a client to access the user's account.
      *
-     * @param  ServerRequestInterface  $psrRequest
-     * @param  Request  $request
-     * @param  ClientRepository  $clients
-     * @return Response
+     * @param  \Psr\Http\Message\ServerRequestInterface  $psrRequest
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Laravel\Passport\ClientRepository  $clients
+     * @param  \Laravel\Passport\TokenRepository  $tokens
+     * @return \Illuminate\Http\Response
      */
     public function authorize(ServerRequestInterface $psrRequest,
                               Request $request,
-                              ClientRepository $clients)
+                              ClientRepository $clients,
+                              TokenRepository $tokens)
     {
-        return $this->withErrorHandling(function () use ($psrRequest, $request, $clients) {
-            $request->session()->put(
-                'authRequest', $authRequest = $this->server->validateAuthorizationRequest($psrRequest)
-            );
+        return $this->withErrorHandling(function () use ($psrRequest, $request, $clients, $tokens) {
+            $authRequest = $this->server->validateAuthorizationRequest($psrRequest);
 
             $scopes = $this->parseScopes($authRequest);
 
+            $token = $tokens->findValidToken(
+                $user = $request->user(),
+                $client = $clients->find($authRequest->getClient()->getIdentifier())
+            );
+
+            if ($token && $token->scopes === collect($scopes)->pluck('id')->all()) {
+                return $this->approveRequest($authRequest, $user);
+            }
+
+            $request->session()->put('authRequest', $authRequest);
+
             return $this->response->view('passport::authorize', [
-                'client' => $clients->find($authRequest->getClient()->getIdentifier()),
-                'user' => $request->user(),
+                'client' => $client,
+                'user' => $user,
                 'scopes' => $scopes,
                 'request' => $request,
             ]);
@@ -71,7 +87,7 @@ class AuthorizationController
     /**
      * Transform the authorization requests's scopes into Scope instances.
      *
-     * @param  AuthRequest  $request
+     * @param  \League\OAuth2\Server\RequestTypes\AuthorizationRequest  $authRequest
      * @return array
      */
     protected function parseScopes($authRequest)
@@ -80,6 +96,24 @@ class AuthorizationController
             collect($authRequest->getScopes())->map(function ($scope) {
                 return $scope->getIdentifier();
             })->all()
+        );
+    }
+
+    /**
+     * Approve the authorization request.
+     *
+     * @param  \League\OAuth2\Server\RequestTypes\AuthorizationRequest  $authRequest
+     * @param  \Illuminate\Database\Eloquent\Model  $user
+     * @return \Illuminate\Http\Response
+     */
+    protected function approveRequest($authRequest, $user)
+    {
+        $authRequest->setUser(new User($user->getKey()));
+
+        $authRequest->setAuthorizationApproved(true);
+
+        return $this->convertResponse(
+            $this->server->completeAuthorizationRequest($authRequest, new Psr7Response)
         );
     }
 }
